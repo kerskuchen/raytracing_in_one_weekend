@@ -81,7 +81,7 @@ enum Hittable {
 }
 
 fn ray_hit_color(ray: &Ray, hittables: &[Hittable]) -> Color {
-    let t_min = 0.0;
+    let t_min = 0.001;
     let mut t_max = std::f32::MAX;
     let mut current_hit = None;
 
@@ -100,7 +100,12 @@ fn ray_hit_color(ray: &Ray, hittables: &[Hittable]) -> Color {
     }
 
     match current_hit {
-        Some(hit) => 0.5 * (Color::from(hit.normal) + 1.0),
+        Some(hit) => {
+            let origin = hit.position;
+            let target = hit.position + hit.normal + Vec3::random_point_in_unit_sphere();
+            let secondary_ray = Ray::new(origin, target - origin);
+            0.5 * ray_hit_color(&secondary_ray, hittables)
+        }
         None => {
             let ray_unit_direction = ray.direction.normalized();
             let t = 0.5 * (ray_unit_direction.y + 1.0);
@@ -139,6 +144,8 @@ fn main() {
                 color += ray_hit_color(&ray, &hittables);
             }
             color /= samplecount as f32;
+            // Gamma correction
+            color = Color::new(f32::sqrt(color.r), f32::sqrt(color.g), f32::sqrt(color.b));
 
             let ir = f32::round(255.0 * color.r) as i32;
             let ig = f32::round(255.0 * color.g) as i32;
@@ -248,6 +255,18 @@ impl Vec3 {
             a.z * b.x - a.x * b.z,
             a.x * b.y - a.y * b.x,
         )
+    }
+
+    pub fn random_point_in_unit_rect() -> Vec3 {
+        Vec3::new(random(), random(), random())
+    }
+
+    pub fn random_point_in_unit_sphere() -> Vec3 {
+        let mut result = Vec3::random_point_in_unit_rect();
+        while result.length_squared() >= 1.0 {
+            result = Vec3::random_point_in_unit_rect();
+        }
+        result
     }
 }
 
