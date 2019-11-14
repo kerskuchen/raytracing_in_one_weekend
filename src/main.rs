@@ -1,29 +1,80 @@
 use std::fmt::Write;
 use std::fs;
 
-fn hit_sphere(sphere_center: Vec3, sphere_radius: f32, ray: &Ray) -> Option<f32> {
-    let dir_center_to_origin = ray.origin - sphere_center;
-    let a = Vec3::dot(ray.direction, ray.direction);
-    let b = 2.0 * Vec3::dot(dir_center_to_origin, ray.direction);
-    let c = Vec3::dot(dir_center_to_origin, dir_center_to_origin) - sphere_radius * sphere_radius;
-    let discriminant = b * b - 4.0 * a * c;
-
-    if discriminant < 0.0 {
-        None
-    } else {
-        Some((-b - f32::sqrt(discriminant)) / (2.0 * a))
-    }
+struct HitRecord {
+    t: f32,
+    position: Vec3,
+    normal: Vec3,
 }
 
-fn background_color(ray: &Ray) -> Color {
-    let sphere_center = Vec3::new(0.0, 0.0, -1.0);
-    let sphere_radius = 0.5;
+struct Sphere {
+    center: Vec3,
+    radius: f32,
+}
 
-    match hit_sphere(sphere_center, sphere_radius, ray) {
-        Some(t) => {
-            let hit_normal = (ray.point_at_parameter(t) - sphere_center).normalized();
-            0.5 * (Color::from(hit_normal) + 1.0)
+fn ray_hit_sphere(sphere: &Sphere, ray: &Ray, t_min: f32, t_max: f32) -> Option<HitRecord> {
+    let dir_center_to_origin = ray.origin - sphere.center;
+    let a = Vec3::dot(ray.direction, ray.direction);
+    let b = Vec3::dot(dir_center_to_origin, ray.direction);
+    let c = Vec3::dot(dir_center_to_origin, dir_center_to_origin) - sphere.radius * sphere.radius;
+    let discriminant = b * b - a * c;
+
+    if discriminant < 0.0 {
+        return None;
+    }
+
+    let t_hit = (-b - f32::sqrt(discriminant)) / a;
+    if t_min < t_hit && t_hit < t_max {
+        let t = t_hit;
+        let position = ray.point_at_parameter(t_hit);
+        let normal = (position - sphere.center) / sphere.radius;
+        return Some(HitRecord {
+            t,
+            position,
+            normal,
+        });
+    }
+
+    let t_hit = (-b + f32::sqrt(discriminant)) / a;
+    if t_min < t_hit && t_hit < t_max {
+        let t = t_hit;
+        let position = ray.point_at_parameter(t_hit);
+        let normal = (position - sphere.center) / sphere.radius;
+        return Some(HitRecord {
+            t,
+            position,
+            normal,
+        });
+    }
+
+    return None;
+}
+
+enum Hittable {
+    Sphere(Sphere),
+}
+
+fn ray_hit_color(ray: &Ray, hittables: &[Hittable]) -> Color {
+    let t_min = 0.0;
+    let mut t_max = std::f32::MAX;
+    let mut current_hit = None;
+
+    for hittable in hittables {
+        let maybe_hit = match hittable {
+            Hittable::Sphere(sphere) => ray_hit_sphere(&sphere, ray, t_min, t_max),
+        };
+
+        match maybe_hit {
+            Some(new_hit) => {
+                t_max = new_hit.t;
+                current_hit.replace(new_hit);
+            }
+            _ => {}
         }
+    }
+
+    match current_hit {
+        Some(hit) => 0.5 * (Color::from(hit.normal) + 1.0),
         None => {
             let ray_unit_direction = ray.direction.normalized();
             let t = 0.5 * (ray_unit_direction.y + 1.0);
@@ -42,13 +93,24 @@ fn main() {
     let vertical = Vec3::new(0.0, 2.0, 0.0);
     let origin = Vec3::new(0.0, 0.0, 0.0);
 
+    let hittables = vec![
+        Hittable::Sphere(Sphere {
+            center: Vec3::new(0.0, 0.0, -1.0),
+            radius: 0.5,
+        }),
+        Hittable::Sphere(Sphere {
+            center: Vec3::new(0.0, -100.5, -1.0),
+            radius: 100.0,
+        }),
+    ];
+
     for y in (0..image_height).rev() {
         for x in 0..image_width {
             let u = x as f32 / image_width as f32;
             let v = y as f32 / image_height as f32;
 
             let ray = Ray::new(origin, left_bottom + u * horizontal + v * vertical);
-            let color = background_color(&ray);
+            let color = ray_hit_color(&ray, &hittables);
 
             let ir = f32::round(255.0 * color.r) as i32;
             let ig = f32::round(255.0 * color.g) as i32;
