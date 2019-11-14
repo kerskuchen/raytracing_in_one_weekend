@@ -1,5 +1,31 @@
+use rand::prelude::*;
 use std::fmt::Write;
 use std::fs;
+
+struct Camera {
+    origin: Vec3,
+    left_bottom_corner: Vec3,
+    dim_horizontal: Vec3,
+    dim_vertical: Vec3,
+}
+
+impl Camera {
+    pub const fn new() -> Camera {
+        Camera {
+            origin: Vec3::new(0.0, 0.0, 0.0),
+            left_bottom_corner: Vec3::new(-2.0, -1.0, -1.0),
+            dim_horizontal: Vec3::new(4.0, 0.0, 0.0),
+            dim_vertical: Vec3::new(0.0, 2.0, 0.0),
+        }
+    }
+
+    fn get_ray(&self, u: f32, v: f32) -> Ray {
+        Ray::new(
+            self.origin,
+            self.left_bottom_corner + u * self.dim_horizontal + v * self.dim_vertical,
+        )
+    }
+}
 
 struct HitRecord {
     t: f32,
@@ -88,10 +114,8 @@ fn main() {
     let image_height = 100;
     let mut ppm_data = format!("P3\n{} {}\n255\n", image_width, image_height);
 
-    let left_bottom = Vec3::new(-2.0, -1.0, -1.0);
-    let horizontal = Vec3::new(4.0, 0.0, 0.0);
-    let vertical = Vec3::new(0.0, 2.0, 0.0);
-    let origin = Vec3::new(0.0, 0.0, 0.0);
+    let samplecount = 100;
+    let camera = Camera::new();
 
     let hittables = vec![
         Hittable::Sphere(Sphere {
@@ -106,11 +130,15 @@ fn main() {
 
     for y in (0..image_height).rev() {
         for x in 0..image_width {
-            let u = x as f32 / image_width as f32;
-            let v = y as f32 / image_height as f32;
+            let mut color = Color::black();
+            for _ in 0..samplecount {
+                let u = (x as f32 + random::<f32>()) / image_width as f32;
+                let v = (y as f32 + random::<f32>()) / image_height as f32;
 
-            let ray = Ray::new(origin, left_bottom + u * horizontal + v * vertical);
-            let color = ray_hit_color(&ray, &hittables);
+                let ray = camera.get_ray(u, v);
+                color += ray_hit_color(&ray, &hittables);
+            }
+            color /= samplecount as f32;
 
             let ir = f32::round(255.0 * color.r) as i32;
             let ig = f32::round(255.0 * color.g) as i32;
@@ -129,7 +157,9 @@ fn main() {
 use std::ops::Add;
 use std::ops::AddAssign;
 use std::ops::Div;
+use std::ops::DivAssign;
 use std::ops::Mul;
+use std::ops::MulAssign;
 use std::ops::Neg;
 use std::ops::Sub;
 use std::ops::SubAssign;
@@ -375,6 +405,24 @@ impl Mul<Vec3> for f32 {
         }
     }
 }
+impl MulAssign<Vec3> for Vec3 {
+    fn mul_assign(&mut self, other: Vec3) {
+        *self = Vec3 {
+            x: self.x * other.x,
+            y: self.y * other.y,
+            z: self.z * other.z,
+        }
+    }
+}
+impl MulAssign<f32> for Vec3 {
+    fn mul_assign(&mut self, scalar: f32) {
+        *self = Vec3 {
+            x: self.x * scalar,
+            y: self.y * scalar,
+            z: self.z * scalar,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------------------------
 // Element-wise division
@@ -395,6 +443,25 @@ impl Div<f32> for Vec3 {
 
     fn div(self, scalar: f32) -> Vec3 {
         Vec3 {
+            x: self.x / scalar,
+            y: self.y / scalar,
+            z: self.z / scalar,
+        }
+    }
+}
+
+impl DivAssign<Vec3> for Vec3 {
+    fn div_assign(&mut self, other: Vec3) {
+        *self = Vec3 {
+            x: self.x / other.x,
+            y: self.y / other.y,
+            z: self.z / other.z,
+        }
+    }
+}
+impl DivAssign<f32> for Vec3 {
+    fn div_assign(&mut self, scalar: f32) {
+        *self = Vec3 {
             x: self.x / scalar,
             y: self.y / scalar,
             z: self.z / scalar,
@@ -632,6 +699,24 @@ impl Mul<Color> for f32 {
         }
     }
 }
+impl MulAssign<Color> for Color {
+    fn mul_assign(&mut self, other: Color) {
+        *self = Color {
+            r: self.r * other.r,
+            g: self.g * other.g,
+            b: self.b * other.b,
+        }
+    }
+}
+impl MulAssign<f32> for Color {
+    fn mul_assign(&mut self, scalar: f32) {
+        *self = Color {
+            r: self.r * scalar,
+            g: self.g * scalar,
+            b: self.b * scalar,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------------------------
 // Element-wise division
@@ -652,6 +737,24 @@ impl Div<f32> for Color {
 
     fn div(self, scalar: f32) -> Color {
         Color {
+            r: self.r / scalar,
+            g: self.g / scalar,
+            b: self.b / scalar,
+        }
+    }
+}
+impl DivAssign<Color> for Color {
+    fn div_assign(&mut self, other: Color) {
+        *self = Color {
+            r: self.r / other.r,
+            g: self.g / other.g,
+            b: self.b / other.b,
+        }
+    }
+}
+impl DivAssign<f32> for Color {
+    fn div_assign(&mut self, scalar: f32) {
+        *self = Color {
             r: self.r / scalar,
             g: self.g / scalar,
             b: self.b / scalar,
