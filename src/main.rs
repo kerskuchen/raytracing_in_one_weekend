@@ -10,9 +10,9 @@ struct Camera {
 }
 
 impl Camera {
-    pub const fn new() -> Camera {
+    pub const fn new(origin: Vec3) -> Camera {
         Camera {
-            origin: Vec3::new(0.0, 0.0, 0.0),
+            origin,
             left_bottom_corner: Vec3::new(-2.0, -1.0, -1.0),
             dim_horizontal: Vec3::new(4.0, 0.0, 0.0),
             dim_vertical: Vec3::new(0.0, 2.0, 0.0),
@@ -76,35 +76,89 @@ fn ray_hit_sphere(sphere: &Sphere, ray: &Ray, t_min: f32, t_max: f32) -> Option<
     return None;
 }
 
-enum Hittable {
-    Sphere(Sphere),
+#[derive(Copy, Clone)]
+enum Material {
+    Lambertian { albedo: Color },
+    Metal { albedo: Color, fuzz: f32 },
 }
 
-fn ray_hit_color(ray: &Ray, hittables: &[Hittable]) -> Color {
+fn ray_material_scatter(
+    ray: &Ray,
+    material: &Material,
+    hit: &HitRecord,
+    out_attenuation: &mut Color,
+    out_scattered: &mut Ray,
+) -> bool {
+    match material {
+        Material::Lambertian { albedo } => {
+            let target = hit.position + hit.normal + Vec3::random_point_in_unit_sphere();
+            *out_scattered = Ray::new(hit.position, target - hit.position);
+            *out_attenuation = *albedo;
+            true
+        }
+        Material::Metal { albedo, fuzz } => {
+            let fuzz = f32::max(0.0, f32::min(1.0, *fuzz));
+            let reflected = ray.direction.normalized().reflected_on_normal(hit.normal);
+            *out_scattered = Ray::new(
+                hit.position,
+                reflected + fuzz * Vec3::random_point_in_unit_sphere(),
+            );
+            *out_attenuation = *albedo;
+
+            Vec3::dot(out_scattered.direction, hit.normal) > 0.0
+        }
+    }
+}
+
+enum Hittable {
+    Sphere(Sphere, Material),
+}
+
+fn ray_hit_color(ray: &Ray, hittables: &[Hittable], depth: u32) -> Color {
+    if depth >= 50 {
+        Color::black();
+    }
+
     let t_min = 0.001;
     let mut t_max = std::f32::MAX;
     let mut current_hit = None;
+    let mut current_material = Material::Lambertian {
+        albedo: Color::black(),
+    };
 
     for hittable in hittables {
-        let maybe_hit = match hittable {
-            Hittable::Sphere(sphere) => ray_hit_sphere(&sphere, ray, t_min, t_max),
+        let (maybe_hit, material) = match hittable {
+            Hittable::Sphere(sphere, material) => {
+                (ray_hit_sphere(&sphere, ray, t_min, t_max), material)
+            }
         };
 
         match maybe_hit {
             Some(new_hit) => {
                 t_max = new_hit.t;
                 current_hit.replace(new_hit);
+                current_material = *material;
             }
-            _ => {}
+            None => {}
         }
     }
 
     match current_hit {
         Some(hit) => {
-            let origin = hit.position;
-            let target = hit.position + hit.normal + Vec3::random_point_in_unit_sphere();
-            let secondary_ray = Ray::new(origin, target - origin);
-            0.5 * ray_hit_color(&secondary_ray, hittables)
+            let mut scattered = Ray::new(Vec3::zero(), Vec3::zero());
+            let mut attenuation = Color::black();
+
+            if ray_material_scatter(
+                ray,
+                &current_material,
+                &hit,
+                &mut attenuation,
+                &mut scattered,
+            ) {
+                return attenuation * ray_hit_color(&scattered, hittables, depth + 1);
+            } else {
+                return Color::black();
+            }
         }
         None => {
             let ray_unit_direction = ray.direction.normalized();
@@ -119,18 +173,48 @@ fn main() {
     let image_height = 100;
     let mut ppm_data = format!("P3\n{} {}\n255\n", image_width, image_height);
 
-    let samplecount = 100;
-    let camera = Camera::new();
+    let samplecount = 1000;
+    let camera = Camera::new(Vec3::new(0.0, 0.0, 0.0));
 
     let hittables = vec![
-        Hittable::Sphere(Sphere {
-            center: Vec3::new(0.0, 0.0, -1.0),
-            radius: 0.5,
-        }),
-        Hittable::Sphere(Sphere {
-            center: Vec3::new(0.0, -100.5, -1.0),
-            radius: 100.0,
-        }),
+        Hittable::Sphere(
+            Sphere {
+                center: Vec3::new(0.0, 0.0, -1.0),
+                radius: 0.5,
+            },
+            Material::Lambertian {
+                albedo: Color::new(0.8, 0.3, 0.3),
+            },
+        ),
+        Hittable::Sphere(
+            Sphere {
+                center: Vec3::new(0.0, -100.5, -1.0),
+                radius: 100.0,
+            },
+            Material::Lambertian {
+                albedo: Color::new(0.8, 0.8, 0.0),
+            },
+        ),
+        Hittable::Sphere(
+            Sphere {
+                center: Vec3::new(1.0, 0.0, -1.0),
+                radius: 0.5,
+            },
+            Material::Metal {
+                albedo: Color::new(0.8, 0.6, 0.2),
+                fuzz: 1.0,
+            },
+        ),
+        Hittable::Sphere(
+            Sphere {
+                center: Vec3::new(-1.0, 0.0, -1.0),
+                radius: 0.5,
+            },
+            Material::Metal {
+                albedo: Color::new(0.8, 0.8, 0.8),
+                fuzz: 0.3,
+            },
+        ),
     ];
 
     for y in (0..image_height).rev() {
@@ -141,7 +225,7 @@ fn main() {
                 let v = (y as f32 + random::<f32>()) / image_height as f32;
 
                 let ray = camera.get_ray(u, v);
-                color += ray_hit_color(&ray, &hittables);
+                color += ray_hit_color(&ray, &hittables, 0);
             }
             color /= samplecount as f32;
             // Gamma correction
@@ -255,6 +339,10 @@ impl Vec3 {
             a.z * b.x - a.x * b.z,
             a.x * b.y - a.y * b.x,
         )
+    }
+
+    pub fn reflected_on_normal(self, normal: Vec3) -> Vec3 {
+        self - 2.0 * Vec3::dot(self, normal) * normal
     }
 
     pub fn random_point_in_unit_rect() -> Vec3 {
