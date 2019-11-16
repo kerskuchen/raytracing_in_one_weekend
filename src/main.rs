@@ -76,10 +76,48 @@ fn ray_hit_sphere(sphere: &Sphere, ray: &Ray, t_min: f32, t_max: f32) -> Option<
     return None;
 }
 
+/// NOTE: This is Christophe Schlick's approximation to the contribution of the Fresnel factor of a
+///       specular reflection (https://en.wikipedia.org/wiki/Schlick%27s_approximation)
+fn specular_reflection_coefficient_schlick(
+    cos_angle: f32,
+    refraction_index_first: f32,
+    refraction_index_second: f32,
+) -> f32 {
+    let r0 = (refraction_index_first - refraction_index_second)
+        / (refraction_index_first + refraction_index_second);
+
+    return r0 + (1.0 - r0) * f32::powi(1.0 - cos_angle, 5);
+}
+
+/// NOTE: This uses https://en.wikipedia.org/wiki/Snell%27s_law#Vector_form
+/// NOTE: The surface normal must always point into the opposite direction of the light direction
+///       dot(normalized_light_dir, surface_normal) < 0.0
+fn refract(
+    normalized_light_dir: Vec3,
+    surface_normal: Vec3,
+    refraction_index_first: f32,
+    refraction_index_second: f32,
+) -> Option<Vec3> {
+    let refraction_quotient = refraction_index_first / refraction_index_second;
+    let c = Vec3::dot(normalized_light_dir, surface_normal);
+    let discriminant = 1.0 - refraction_quotient * refraction_quotient * (1.0 - c * c);
+
+    assert!(c <= 0.0);
+
+    if discriminant > 0.0 {
+        let refracted = refraction_quotient * (normalized_light_dir - surface_normal * c)
+            - surface_normal * f32::sqrt(discriminant);
+        Some(refracted)
+    } else {
+        None
+    }
+}
+
 #[derive(Copy, Clone)]
 enum Material {
     Lambertian { albedo: Color },
     Metal { albedo: Color, fuzz: f32 },
+    Dielectric { refraction_index: f32 },
 }
 
 fn ray_material_scatter(
@@ -107,6 +145,46 @@ fn ray_material_scatter(
 
             Vec3::dot(out_scattered.direction, hit.normal) > 0.0
         }
+        Material::Dielectric { refraction_index } => {
+            *out_attenuation = Color::new(1.0, 1.0, 1.0);
+            let reflected_dir = ray.direction.reflected_on_normal(hit.normal);
+
+            let (refraction_normal, refraction_index_first, refraction_index_second) =
+                if Vec3::dot(ray.direction, hit.normal) > 0.0 {
+                    // We hit something from the inside
+                    (-hit.normal, *refraction_index, 1.0)
+                } else {
+                    // We hit something from the outside
+                    (hit.normal, 1.0, *refraction_index)
+                };
+            let refraction_cos_angle =
+                -refraction_index_first * Vec3::dot(ray.direction.normalized(), refraction_normal);
+
+            let (reflection_probe, refracted_dir) = match refract(
+                ray.direction,
+                refraction_normal,
+                refraction_index_first,
+                refraction_index_second,
+            ) {
+                Some(refracted_dir) => (
+                    specular_reflection_coefficient_schlick(
+                        refraction_cos_angle,
+                        refraction_index_first,
+                        refraction_index_second,
+                    ),
+                    refracted_dir,
+                ),
+                None => (1.0, Vec3::zero()),
+            };
+
+            if random::<f32>() < reflection_probe {
+                *out_scattered = Ray::new(hit.position, reflected_dir);
+            } else {
+                *out_scattered = Ray::new(hit.position, refracted_dir);
+            }
+
+            true
+        }
     }
 }
 
@@ -116,7 +194,7 @@ enum Hittable {
 
 fn ray_hit_color(ray: &Ray, hittables: &[Hittable], depth: u32) -> Color {
     if depth >= 50 {
-        Color::black();
+        return Color::black();
     }
 
     let t_min = 0.001;
@@ -183,7 +261,7 @@ fn main() {
                 radius: 0.5,
             },
             Material::Lambertian {
-                albedo: Color::new(0.8, 0.3, 0.3),
+                albedo: Color::new(0.1, 0.2, 0.5),
             },
         ),
         Hittable::Sphere(
@@ -202,7 +280,7 @@ fn main() {
             },
             Material::Metal {
                 albedo: Color::new(0.8, 0.6, 0.2),
-                fuzz: 1.0,
+                fuzz: 0.0,
             },
         ),
         Hittable::Sphere(
@@ -210,9 +288,19 @@ fn main() {
                 center: Vec3::new(-1.0, 0.0, -1.0),
                 radius: 0.5,
             },
-            Material::Metal {
-                albedo: Color::new(0.8, 0.8, 0.8),
-                fuzz: 0.3,
+            Material::Dielectric {
+                refraction_index: 1.5,
+            },
+        ),
+        Hittable::Sphere(
+            Sphere {
+                center: Vec3::new(-1.0, 0.0, -1.0),
+                // NOTE: The negative radius causes the surface normal to point inwards,
+                //       effectively making the sphere hollow
+                radius: -0.45,
+            },
+            Material::Dielectric {
+                refraction_index: 1.5,
             },
         ),
     ];
