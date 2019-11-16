@@ -10,19 +10,38 @@ struct Camera {
 }
 
 impl Camera {
-    pub const fn new(origin: Vec3) -> Camera {
+    pub fn new(
+        look_from: Vec3,
+        look_at: Vec3,
+        view_up: Vec3,
+        vertical_fov: f32,
+        aspect_ratio: f32,
+    ) -> Camera {
+        let origin = look_from;
+        let forward = (look_at - look_from).normalized();
+        let right = Vec3::cross(forward, view_up).normalized();
+        let up = Vec3::cross(right, forward).normalized();
+
+        let theta = vertical_fov * (std::f32::consts::PI / 180.0);
+        let half_height = f32::tan(theta / 2.0);
+        let half_width = aspect_ratio * half_height;
+
+        let left_bottom_corner = origin + forward - half_width * right - half_height * up;
+        let dim_horizontal = 2.0 * half_width * right;
+        let dim_vertical = 2.0 * half_height * up;
+
         Camera {
             origin,
-            left_bottom_corner: Vec3::new(-2.0, -1.0, -1.0),
-            dim_horizontal: Vec3::new(4.0, 0.0, 0.0),
-            dim_vertical: Vec3::new(0.0, 2.0, 0.0),
+            left_bottom_corner,
+            dim_horizontal,
+            dim_vertical,
         }
     }
 
     fn get_ray(&self, u: f32, v: f32) -> Ray {
         Ray::new(
             self.origin,
-            self.left_bottom_corner + u * self.dim_horizontal + v * self.dim_vertical,
+            self.left_bottom_corner + u * self.dim_horizontal + v * self.dim_vertical - self.origin,
         )
     }
 }
@@ -252,7 +271,16 @@ fn main() {
     let mut ppm_data = format!("P3\n{} {}\n255\n", image_width, image_height);
 
     let samplecount = 1000;
-    let camera = Camera::new(Vec3::new(0.0, 0.0, 0.0));
+    let look_from = Vec3::new(-2.0, 2.0, 1.0);
+    let look_at = Vec3::new(0.0, 0.0, -1.0);
+    let up = Vec3::new(0.0, 1.0, 0.0);
+    let camera = Camera::new(
+        look_from,
+        look_at,
+        up,
+        30.0,
+        image_width as f32 / image_height as f32,
+    );
 
     let hittables = vec![
         Hittable::Sphere(
