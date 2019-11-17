@@ -1,4 +1,5 @@
 use rand::prelude::*;
+use rayon::prelude::*;
 use std::fmt::Write;
 use std::fs;
 
@@ -287,11 +288,11 @@ fn main() {
     let image_height = 100;
 
     let samplecount = 1000;
-    let look_from = Vec3::new(3.0, 3.0, 2.0);
-    let look_at = Vec3::new(0.0, 0.0, -1.0);
+    let look_from = Vec3::new(4.0, 1.0, 2.0);
+    let look_at = Vec3::new(-1.0, 0.0, -1.0);
     let up = Vec3::new(0.0, 1.0, 0.0);
     let focus_dist = (look_at - look_from).length();
-    let aperture = 2.0;
+    let aperture = 0.5;
     let camera = Camera::new(
         look_from,
         look_at,
@@ -356,8 +357,13 @@ fn main() {
     let pixel_count = image_width * image_height;
     let mut image_data = vec![Color::black(); pixel_count];
 
-    for y in 0..image_height {
-        for x in 0..image_width {
+    image_data
+        .par_iter_mut()
+        .enumerate()
+        .for_each(|(index, out_color)| {
+            let x = index % image_width;
+            let y = index / image_width;
+
             let mut color = Color::black();
             for _ in 0..samplecount {
                 let u = (x as f32 + random::<f32>()) / image_width as f32;
@@ -370,9 +376,8 @@ fn main() {
             // Gamma correction
             color = Color::new(f32::sqrt(color.r), f32::sqrt(color.g), f32::sqrt(color.b));
 
-            image_data[x + y * image_width] = color;
-        }
-    }
+            *out_color = color;
+        });
 
     // Write ppm
     let mut ppm_data = format!("P3\n{} {}\n255\n", image_width, image_height);
