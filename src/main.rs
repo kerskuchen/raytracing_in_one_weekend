@@ -4,9 +4,15 @@ use std::fs;
 
 struct Camera {
     origin: Vec3,
+    _forward: Vec3,
+    right: Vec3,
+    up: Vec3,
+
     left_bottom_corner: Vec3,
     dim_horizontal: Vec3,
     dim_vertical: Vec3,
+
+    lens_radius: f32,
 }
 
 impl Camera {
@@ -16,6 +22,8 @@ impl Camera {
         view_up: Vec3,
         vertical_fov: f32,
         aspect_ratio: f32,
+        aperture: f32,
+        focus_dist: f32,
     ) -> Camera {
         let origin = look_from;
         let forward = (look_at - look_from).normalized();
@@ -26,23 +34,32 @@ impl Camera {
         let half_height = f32::tan(theta / 2.0);
         let half_width = aspect_ratio * half_height;
 
-        let left_bottom_corner = origin + forward - half_width * right - half_height * up;
-        let dim_horizontal = 2.0 * half_width * right;
-        let dim_vertical = 2.0 * half_height * up;
+        let left_bottom_corner = origin + forward * focus_dist
+            - half_width * focus_dist * right
+            - half_height * focus_dist * up;
+        let dim_horizontal = 2.0 * half_width * focus_dist * right;
+        let dim_vertical = 2.0 * half_height * focus_dist * up;
+
+        let lens_radius = aperture / 2.0;
 
         Camera {
             origin,
+            _forward: forward,
+            right,
+            up,
             left_bottom_corner,
             dim_horizontal,
             dim_vertical,
+            lens_radius,
         }
     }
 
     fn get_ray(&self, u: f32, v: f32) -> Ray {
-        Ray::new(
-            self.origin,
-            self.left_bottom_corner + u * self.dim_horizontal + v * self.dim_vertical - self.origin,
-        )
+        let random_disk = self.lens_radius * Vec3::random_point_in_unit_disk();
+        let offset = self.right * random_disk.x + self.up * random_disk.y;
+        let start = self.origin + offset;
+        let end = self.left_bottom_corner + u * self.dim_horizontal + v * self.dim_vertical;
+        Ray::new(start, end - start)
     }
 }
 
@@ -271,15 +288,19 @@ fn main() {
     let mut ppm_data = format!("P3\n{} {}\n255\n", image_width, image_height);
 
     let samplecount = 1000;
-    let look_from = Vec3::new(-2.0, 2.0, 1.0);
+    let look_from = Vec3::new(3.0, 3.0, 2.0);
     let look_at = Vec3::new(0.0, 0.0, -1.0);
     let up = Vec3::new(0.0, 1.0, 0.0);
+    let focus_dist = (look_at - look_from).length();
+    let aperture = 2.0;
     let camera = Camera::new(
         look_from,
         look_at,
         up,
-        30.0,
+        20.0,
         image_width as f32 / image_height as f32,
+        aperture,
+        focus_dist,
     );
 
     let hittables = vec![
@@ -461,14 +482,26 @@ impl Vec3 {
         self - 2.0 * Vec3::dot(self, normal) * normal
     }
 
-    pub fn random_point_in_unit_rect() -> Vec3 {
+    pub fn random_point_in_unit_square() -> Vec3 {
+        Vec3::new(random(), random(), 0.0)
+    }
+
+    pub fn random_point_in_unit_cube() -> Vec3 {
         Vec3::new(random(), random(), random())
     }
 
-    pub fn random_point_in_unit_sphere() -> Vec3 {
-        let mut result = Vec3::random_point_in_unit_rect();
+    pub fn random_point_in_unit_disk() -> Vec3 {
+        let mut result = 2.0 * Vec3::random_point_in_unit_square() - Vec3::new(1.0, 1.0, 0.0);
         while result.length_squared() >= 1.0 {
-            result = Vec3::random_point_in_unit_rect();
+            result = 2.0 * Vec3::random_point_in_unit_square() - Vec3::new(1.0, 1.0, 0.0);
+        }
+        result
+    }
+
+    pub fn random_point_in_unit_sphere() -> Vec3 {
+        let mut result = Vec3::random_point_in_unit_cube();
+        while result.length_squared() >= 1.0 {
+            result = Vec3::random_point_in_unit_cube();
         }
         result
     }
