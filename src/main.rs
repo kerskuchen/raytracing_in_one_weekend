@@ -283,16 +283,115 @@ fn ray_hit_color(ray: &Ray, hittables: &[Hittable], depth: u32) -> Color {
     }
 }
 
-fn main() {
-    let image_width = 200;
-    let image_height = 100;
+fn create_random_scene() -> Vec<Hittable> {
+    let mut result = Vec::with_capacity(500);
 
-    let samplecount = 1000;
-    let look_from = Vec3::new(4.0, 1.0, 2.0);
-    let look_at = Vec3::new(-1.0, 0.0, -1.0);
+    // Ground
+    result.push(Hittable::Sphere(
+        Sphere {
+            center: Vec3::new(0.0, -1000.0, 0.0),
+            radius: 1000.0,
+        },
+        Material::Lambertian {
+            albedo: Color::new(0.5, 0.5, 0.5),
+        },
+    ));
+
+    // Three sample spheres
+    result.push(Hittable::Sphere(
+        Sphere {
+            center: Vec3::new(0.0, 1.0, 0.0),
+            radius: 1.0,
+        },
+        Material::Dielectric {
+            refraction_index: 1.5,
+        },
+    ));
+    result.push(Hittable::Sphere(
+        Sphere {
+            center: Vec3::new(-4.0, 1.0, 0.0),
+            radius: 1.0,
+        },
+        Material::Lambertian {
+            albedo: Color::new(0.4, 0.2, 0.1),
+        },
+    ));
+    result.push(Hittable::Sphere(
+        Sphere {
+            center: Vec3::new(4.0, 1.0, 0.0),
+            radius: 1.0,
+        },
+        Material::Metal {
+            albedo: Color::new(0.7, 0.6, 0.5),
+            fuzz: 0.0,
+        },
+    ));
+
+    for a in -11..11 {
+        for b in -11..11 {
+            let choose_material = random::<f32>();
+            let center = Vec3::new(
+                a as f32 + 0.9 * random::<f32>(),
+                0.2,
+                b as f32 + 0.9 * random::<f32>(),
+            );
+            if (center - Vec3::new(4.0, 0.2, 0.0)).length() > 0.9 {
+                if choose_material < 0.8 {
+                    // Diffuse
+                    result.push(Hittable::Sphere(
+                        Sphere {
+                            center,
+                            radius: 0.2,
+                        },
+                        Material::Lambertian {
+                            albedo: Color::new(random::<f32>(), random::<f32>(), random::<f32>()),
+                        },
+                    ));
+                } else if choose_material < 0.95 {
+                    // Metal
+                    result.push(Hittable::Sphere(
+                        Sphere {
+                            center,
+                            radius: 0.2,
+                        },
+                        Material::Metal {
+                            albedo: Color::new(
+                                0.5 * (1.0 + random::<f32>()),
+                                0.5 * (1.0 + random::<f32>()),
+                                0.5 * (1.0 + random::<f32>()),
+                            ),
+                            fuzz: 0.5 * random::<f32>(),
+                        },
+                    ));
+                } else {
+                    // Glass
+                    result.push(Hittable::Sphere(
+                        Sphere {
+                            center,
+                            radius: 0.2,
+                        },
+                        Material::Dielectric {
+                            refraction_index: 0.5 * random::<f32>(),
+                        },
+                    ));
+                }
+            }
+        }
+    }
+
+    result
+}
+
+fn main() {
+    let image_width = 600;
+    let image_height = 300;
+
+    let samplecount = 5000;
+    let look_from = Vec3::new(13.0, 2.0, 3.0);
+    let look_at = Vec3::new(0.0, 0.0, 0.0);
     let up = Vec3::new(0.0, 1.0, 0.0);
-    let focus_dist = (look_at - look_from).length();
-    let aperture = 0.5;
+    let focus_dist = 10.0;
+    let aperture = 0.1;
     let camera = Camera::new(
         look_from,
         look_at,
@@ -303,56 +402,7 @@ fn main() {
         focus_dist,
     );
 
-    let hittables = vec![
-        Hittable::Sphere(
-            Sphere {
-                center: Vec3::new(0.0, 0.0, -1.0),
-                radius: 0.5,
-            },
-            Material::Lambertian {
-                albedo: Color::new(0.1, 0.2, 0.5),
-            },
-        ),
-        Hittable::Sphere(
-            Sphere {
-                center: Vec3::new(0.0, -100.5, -1.0),
-                radius: 100.0,
-            },
-            Material::Lambertian {
-                albedo: Color::new(0.8, 0.8, 0.0),
-            },
-        ),
-        Hittable::Sphere(
-            Sphere {
-                center: Vec3::new(1.0, 0.0, -1.0),
-                radius: 0.5,
-            },
-            Material::Metal {
-                albedo: Color::new(0.8, 0.6, 0.2),
-                fuzz: 0.0,
-            },
-        ),
-        Hittable::Sphere(
-            Sphere {
-                center: Vec3::new(-1.0, 0.0, -1.0),
-                radius: 0.5,
-            },
-            Material::Dielectric {
-                refraction_index: 1.5,
-            },
-        ),
-        Hittable::Sphere(
-            Sphere {
-                center: Vec3::new(-1.0, 0.0, -1.0),
-                // NOTE: The negative radius causes the surface normal to point inwards,
-                //       effectively making the sphere hollow
-                radius: -0.45,
-            },
-            Material::Dielectric {
-                refraction_index: 1.5,
-            },
-        ),
-    ];
+    let hittables = create_random_scene();
 
     let pixel_count = image_width * image_height;
     let mut image_data = vec![Color::black(); pixel_count];
