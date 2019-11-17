@@ -285,7 +285,6 @@ fn ray_hit_color(ray: &Ray, hittables: &[Hittable], depth: u32) -> Color {
 fn main() {
     let image_width = 200;
     let image_height = 100;
-    let mut ppm_data = format!("P3\n{} {}\n255\n", image_width, image_height);
 
     let samplecount = 1000;
     let look_from = Vec3::new(3.0, 3.0, 2.0);
@@ -354,7 +353,10 @@ fn main() {
         ),
     ];
 
-    for y in (0..image_height).rev() {
+    let pixel_count = image_width * image_height;
+    let mut image_data = vec![Color::black(); pixel_count];
+
+    for y in 0..image_height {
         for x in 0..image_width {
             let mut color = Color::black();
             for _ in 0..samplecount {
@@ -368,14 +370,21 @@ fn main() {
             // Gamma correction
             color = Color::new(f32::sqrt(color.r), f32::sqrt(color.g), f32::sqrt(color.b));
 
-            let ir = f32::round(255.0 * color.r) as i32;
-            let ig = f32::round(255.0 * color.g) as i32;
-            let ib = f32::round(255.0 * color.b) as i32;
-
-            write!(&mut ppm_data, "{} {} {}\n", ir, ig, ib).unwrap();
+            image_data[x + y * image_width] = color;
         }
     }
 
+    // Write ppm
+    let mut ppm_data = format!("P3\n{} {}\n255\n", image_width, image_height);
+    for y in (0..image_height).rev() {
+        for x in 0..image_width {
+            let color = image_data[x + y * image_width];
+            let ir = f32::round(255.0 * color.r) as i32;
+            let ig = f32::round(255.0 * color.g) as i32;
+            let ib = f32::round(255.0 * color.b) as i32;
+            write!(&mut ppm_data, "{} {} {}\n", ir, ig, ib).unwrap();
+        }
+    }
     fs::write("output.ppm", ppm_data).expect("Unable to write file");
 }
 
