@@ -1,7 +1,5 @@
 use rand::prelude::*;
 use rayon::prelude::*;
-use std::fmt::Write;
-use std::fs;
 
 struct Camera {
     origin: Vec3,
@@ -369,7 +367,7 @@ fn create_random_scene() -> Vec<Hittable> {
                             radius: 0.2,
                         },
                         Material::Dielectric {
-                            refraction_index: 0.5 * random::<f32>(),
+                            refraction_index: 1.5,
                         },
                     ));
                 }
@@ -381,10 +379,12 @@ fn create_random_scene() -> Vec<Hittable> {
 }
 
 fn main() {
+    let start_time = std::time::Instant::now();
+
     let image_width = 1200;
     let image_height = 800;
 
-    let samplecount = 1000;
+    let samplecount = 100;
     let look_from = Vec3::new(13.0, 2.0, 3.0);
     let look_at = Vec3::new(0.0, 0.0, 0.0);
     let up = Vec3::new(0.0, 1.0, 0.0);
@@ -427,18 +427,30 @@ fn main() {
             *out_color = color;
         });
 
-    // Write ppm
-    let mut ppm_data = format!("P3\n{} {}\n255\n", image_width, image_height);
-    for y in (0..image_height).rev() {
+    // Write png
+    let mut image_buffer = vec![0u8; 3 * pixel_count];
+    for y in 0..image_height {
         for x in 0..image_width {
-            let color = image_data[x + y * image_width];
-            let ir = f32::round(255.0 * color.r) as i32;
-            let ig = f32::round(255.0 * color.g) as i32;
-            let ib = f32::round(255.0 * color.b) as i32;
-            write!(&mut ppm_data, "{} {} {}\n", ir, ig, ib).unwrap();
+            let color = image_data[x + ((image_height - 1) - y) * image_width];
+            let ir = f32::round(255.0 * color.r) as u8;
+            let ig = f32::round(255.0 * color.g) as u8;
+            let ib = f32::round(255.0 * color.b) as u8;
+
+            image_buffer[3 * (x + y * image_width) + 0] = ir;
+            image_buffer[3 * (x + y * image_width) + 1] = ig;
+            image_buffer[3 * (x + y * image_width) + 2] = ib;
         }
     }
-    fs::write("output.ppm", ppm_data).expect("Unable to write file");
+    image::save_buffer(
+        "output.png",
+        &image_buffer,
+        image_width as u32,
+        image_height as u32,
+        image::RGB(8),
+    )
+    .unwrap();
+
+    println!("Elapsed time: {:.3}s", start_time.elapsed().as_secs_f64());
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
