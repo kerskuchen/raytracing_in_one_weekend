@@ -139,8 +139,6 @@ fn refract(
     let c = Vec3::dot(normalized_light_dir, surface_normal);
     let discriminant = 1.0 - refraction_quotient * refraction_quotient * (1.0 - c * c);
 
-    assert!(c <= 0.0);
-
     if discriminant > 0.0 {
         let refracted = refraction_quotient * (normalized_light_dir - surface_normal * c)
             - surface_normal * f32::sqrt(discriminant);
@@ -198,7 +196,7 @@ fn ray_material_scatter(
                 -refraction_index_first * Vec3::dot(ray.direction.normalized(), refraction_normal);
 
             let (reflection_probe, refracted_dir) = match refract(
-                ray.direction,
+                ray.direction.normalized(),
                 refraction_normal,
                 refraction_index_first,
                 refraction_index_second,
@@ -383,10 +381,10 @@ fn create_random_scene() -> Vec<Hittable> {
 }
 
 fn main() {
-    let image_width = 600;
-    let image_height = 300;
+    let image_width = 1200;
+    let image_height = 800;
 
-    let samplecount = 5000;
+    let samplecount = 1000;
     let look_from = Vec3::new(13.0, 2.0, 3.0);
     let look_at = Vec3::new(0.0, 0.0, 0.0);
     let up = Vec3::new(0.0, 1.0, 0.0);
